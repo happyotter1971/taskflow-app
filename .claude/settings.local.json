@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(oc apply:*)",
+      "Bash(oc get service:*)",
+      "Bash(oc get:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
