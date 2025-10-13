@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: taskflow-backend-s2i
+  namespace: happyotter-dev
+spec:
+  selector:
+    app: taskflow
+    component: backend-s2i
+  ports:
+  - name: http
+    port: 8080
+    targetPort: 8080

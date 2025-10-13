@@ -1,0 +1,11 @@
+apiVersion: image.openshift.io/v1
+kind: ImageStream
+metadata:
+  name: taskflow-backend
+  namespace: happyotter-dev
+  labels:
+    app: taskflow
+    component: backend
+spec:
+  lookupPolicy:
+    local: false

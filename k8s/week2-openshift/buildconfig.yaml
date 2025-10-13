@@ -1,0 +1,26 @@
+apiVersion: build.openshift.io/v1
+kind: BuildConfig
+metadata:
+  name: taskflow-backend
+  namespace: happyotter-dev
+  labels:
+    app: taskflow
+    component: backend
+spec:
+  output:
+    to:
+      kind: ImageStreamTag
+      name: taskflow-backend:latest
+  source:
+    type: Git
+    git:
+      uri: https://github.com/happyotter1971/taskflow-app.git
+      ref: main
+    contextDir: app/backend
+  strategy:
+    type: Docker
+    dockerStrategy:
+      dockerfilePath: Dockerfile
+  triggers:
+    - type: ConfigChange
+    - type: ImageChange
