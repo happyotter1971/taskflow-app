@@ -261,4 +261,4 @@ def delete_task(task_id):
 if __name__ == '__main__':
     mode = "database" if USE_DATABASE else "in-memory"
     print(f"Starting TaskFlow API in {mode} mode")
-    app.run(host='0.0.0.0', port=8080)
+    app.run(host='0.0.0.0', port=8080)# CI/CD test - Mon Oct 13 08:37:07 EDT 2025
