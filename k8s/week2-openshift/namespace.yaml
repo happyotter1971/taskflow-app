@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: happyotter-dev
+  labels:
+    app: taskflow
+    environment: dev
