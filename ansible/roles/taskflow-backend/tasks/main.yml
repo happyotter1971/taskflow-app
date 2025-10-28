@@ -1,0 +1,141 @@
+#SPDX-License-Identifier: MIT-0
+---
+# tasks file for roles/taskflow-backend
+- name: Verify namespace exists
+  command: oc get namespace "{{ backend_namespace }}"
+  register: namespace_check
+  changed_when: false
+  failed_when: namespace_check.rc != 0
+
+- name: Create ConfigMap
+  k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: "{{ configmap_name }}"
+        namespace: "{{ backend_namespace }}"
+        labels:
+          app: taskflow
+          managed-by: ansible
+      data:
+        ENVIRONMENT: "{{ backend_environment }}"
+        USE_DATABASE: "true"
+        APP_VERSION: "1.0"
+        LOG_LEVEL: "INFO"
+
+- name: Deploy backend
+  k8s:
+    state: present
+    definition:
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: "{{ backend_name }}"
+        namespace: "{{ backend_namespace }}"
+        labels:
+          app: taskflow
+          component: backend
+          managed-by: ansible
+      spec:
+        replicas: "{{ backend_replicas }}"
+        selector:
+          matchLabels:
+            app: taskflow
+            component: backend
+        template:
+          metadata:
+            labels:
+              app: taskflow
+              component: backend
+          spec:
+            containers:
+            - name: backend
+              image: "{{ backend_image }}:{{ backend_tag }}"
+              ports:
+              - containerPort: 8080
+              envFrom:
+              - configMapRef:
+                  name: "{{ configmap_name }}"
+              - secretRef:
+                  name: "{{ db_secret_name }}"
+              resources:
+                requests:
+                  cpu: "{{ backend_cpu_request }}"
+                  memory: "{{ backend_memory_request }}"
+                limits:
+                  cpu: "{{ backend_cpu_limit }}"
+                  memory: "{{ backend_memory_limit }}"
+              livenessProbe:
+                httpGet:
+                  path: /health
+                  port: 8080
+                initialDelaySeconds: 15
+                periodSeconds: 10
+              readinessProbe:
+                httpGet:
+                  path: /health
+                  port: 8080
+                initialDelaySeconds: 10
+                periodSeconds: 5
+              securityContext:
+                allowPrivilegeEscalation: false
+                runAsNonRoot: true
+                capabilities:
+                  drop: [ALL]
+
+- name: Create service
+  k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: "{{ backend_name }}"
+        namespace: "{{ backend_namespace }}"
+        labels:
+          app: taskflow
+          component: backend
+      spec:
+        selector:
+          app: taskflow
+          component: backend
+        ports:
+        - port: 8080
+          targetPort: 8080
+
+- name: Wait for deployment to be ready
+  k8s_info:
+    api_version: apps/v1
+    kind: Deployment
+    name: "{{ backend_name }}"
+    namespace: "{{ backend_namespace }}"
+  register: deployment
+  until: >
+    deployment.resources[0].status.readyReplicas is defined and
+    deployment.resources[0].status.readyReplicas == deployment.resources[0].spec.replicas
+  retries: 20
+  delay: 10
+
+- name: Create route
+  k8s:
+    state: present
+    definition:
+      apiVersion: route.openshift.io/v1
+      kind: Route
+      metadata:
+        name: "{{ backend_name }}"
+        namespace: "{{ backend_namespace }}"
+      spec:
+        to:
+          kind: Service
+          name: "{{ backend_name }}"
+        tls:
+          termination: edge
+          insecureEdgeTerminationPolicy: Redirect
+  register: backend_route
+
+- name: Display URL
+  debug:
+    msg: "Backend: https://{{ backend_route.result.spec.host }}"

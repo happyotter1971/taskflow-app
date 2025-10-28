@@ -1,0 +1,72 @@
+---
+- name: TaskFlow health check
+  hosts: localhost
+  gather_facts: no
+  collections:
+    - kubernetes.core
+  
+  vars:
+    namespace: happyotter-dev  # CORRECTED
+  
+  tasks:
+    - name: Get deployment
+      k8s_info:
+        api_version: apps/v1
+        kind: Deployment
+        name: taskflow-backend
+        namespace: "{{ namespace }}"
+      register: deployment
+    
+    - name: Check deployment exists
+      fail:
+        msg: "Deployment not found"
+      when: deployment.resources | length == 0
+    
+    - name: Display deployment status
+      debug:
+        msg:
+          - "Deployment: {{ deployment.resources[0].metadata.name }}"
+          - "Replicas: {{ deployment.resources[0].status.readyReplicas | default(0) }}/{{ deployment.resources[0].spec.replicas }}"
+          - "Image: {{ deployment.resources[0].spec.template.spec.containers[0].image }}"
+    
+    - name: Get pods
+      k8s_info:
+        api_version: v1
+        kind: Pod
+        namespace: "{{ namespace }}"
+        label_selectors:
+          - app=taskflow
+          - component=backend
+      register: pods
+    
+    - name: Display pod status
+      debug:
+        msg: "{{ item.metadata.name }}: {{ item.status.phase }}"
+      loop: "{{ pods.resources }}"
+      loop_control:
+        label: "{{ item.metadata.name }}"
+    
+    - name: Check database (using StatefulSet predictable name)
+      shell: |
+        oc exec taskflow-db-0 -n {{ namespace }} -- pg_isready -U taskflowuser 2>&1
+      register: db_check
+      changed_when: false
+      failed_when: false
+    
+    - name: Check route
+      uri:
+        url: "https://{{ lookup('pipe', 'oc get route taskflow-backend -n ' + namespace + ' -o jsonpath={.spec.host}') }}/health"
+        validate_certs: no
+        timeout: 10
+      register: health_check
+      failed_when: false
+    
+    - name: Display summary
+      debug:
+        msg:
+          - "=== Health Summary ==="
+          - "Pods: {{ pods.resources | selectattr('status.phase', 'equalto', 'Running') | list | length }}/{{ pods.resources | length }}"
+          - "Database: {{ 'Connected' if db_check.rc == 0 else 'Disconnected' }}"
+          - "Database Pod: taskflow-db-0 (StatefulSet)"
+          - "Route: {{ 'Accessible' if health_check.status == 200 else 'Not accessible' }}"
+          - "Status: {{ 'HEALTHY' if pods.resources | length > 0 and db_check.rc == 0 and health_check.status == 200 else 'DEGRADED' }}"

@@ -1,0 +1,74 @@
+---
+- name: Deploy complete TaskFlow stack
+  hosts: localhost
+  gather_facts: no
+  collections:
+    - kubernetes.core
+    - community.okd
+  
+  vars:
+    target_namespace: happyotter-dev  # CORRECTED
+    backend_environment: development
+  
+  tasks:
+    - name: Verify OpenShift connection
+      command: oc whoami
+      register: oc_user
+      changed_when: false
+      failed_when: oc_user.rc != 0
+    
+    - name: Verify QUAY_USERNAME
+      fail:
+        msg: "QUAY_USERNAME not set. Run: source env.sh"
+      when: lookup('env', 'QUAY_USERNAME') == ''
+    
+    - name: Display configuration
+      debug:
+        msg:
+          - "User: {{ oc_user.stdout }}"
+          - "Namespace: {{ target_namespace }}"
+          - "Environment: {{ backend_environment }}"
+          - "Image: {{ backend_image }}:{{ backend_tag }}"
+    
+    - name: Verify namespace exists
+      command: oc get namespace "{{ target_namespace }}"
+      register: namespace_check
+      changed_when: false
+      failed_when: namespace_check.rc != 0
+    
+    - name: Deploy database
+      include_role:
+        name: taskflow-database
+      vars:
+        db_namespace: "{{ target_namespace }}"
+    
+    - name: Deploy backend
+      include_role:
+        name: taskflow-backend
+      vars:
+        backend_namespace: "{{ target_namespace }}"
+    
+    - name: Get backend URL
+      set_fact:
+        backend_url: "{{ lookup('pipe', 'oc get route taskflow-backend -n ' + target_namespace + ' -o jsonpath={.spec.host}') }}"
+    
+    - name: Wait for route to be accessible
+      uri:
+        url: "https://{{ backend_url }}/health"
+        validate_certs: no
+        timeout: 10
+      register: health_check
+      until: health_check.status == 200
+      retries: 12
+      delay: 5
+      failed_when: false
+    
+    - name: Display summary
+      debug:
+        msg:
+          - "=== Deployment Complete ==="
+          - "Backend: https://{{ backend_url }}"
+          - "Health: https://{{ backend_url }}/health"
+          - "API: https://{{ backend_url }}/api/tasks"
+          - "Database: taskflow-db-0 (StatefulSet pod)"
+          - "Status: {{ 'HEALTHY' if health_check.status == 200 else 'Check logs if unhealthy' }}"

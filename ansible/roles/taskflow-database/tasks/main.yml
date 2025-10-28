@@ -1,0 +1,126 @@
+#SPDX-License-Identifier: MIT-0
+---
+# tasks file for roles/taskflow-database
+- name: Create database secret
+  k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: "{{ db_secret_name }}"
+        namespace: "{{ db_namespace }}"
+        labels:
+          app: taskflow
+          component: database
+          managed-by: ansible
+      type: Opaque
+      stringData:
+        DB_HOST: taskflow-db
+        DB_NAME: "{{ db_name }}"
+        DB_USER: "{{ db_user }}"
+        DB_PASSWORD: "{{ db_password }}"
+        DB_PORT: "5432"
+
+- name: Deploy PostgreSQL service (headless for StatefulSet)
+  k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: taskflow-db
+        namespace: "{{ db_namespace }}"
+        labels:
+          app: taskflow
+          component: database
+      spec:
+        ports:
+        - port: 5432
+        clusterIP: None
+        selector:
+          app: taskflow
+          component: database
+
+- name: Deploy PostgreSQL StatefulSet
+  k8s:
+    state: present
+    definition:
+      apiVersion: apps/v1
+      kind: StatefulSet
+      metadata:
+        name: taskflow-db
+        namespace: "{{ db_namespace }}"
+        labels:
+          app: taskflow
+          component: database
+          managed-by: ansible
+      spec:
+        serviceName: taskflow-db
+        replicas: 1
+        selector:
+          matchLabels:
+            app: taskflow
+            component: database
+        template:
+          metadata:
+            labels:
+              app: taskflow
+              component: database
+          spec:
+            containers:
+            - name: postgres
+              image: "{{ db_postgres_image }}"
+              ports:
+              - containerPort: 5432
+              env:
+              - name: POSTGRES_DB
+                value: "{{ db_name }}"
+              - name: POSTGRES_USER
+                value: "{{ db_user }}"
+              - name: POSTGRES_PASSWORD
+                value: "{{ db_password }}"
+              - name: PGDATA
+                value: /var/lib/postgresql/data/pgdata
+              volumeMounts:
+              - name: postgres-storage
+                mountPath: /var/lib/postgresql/data
+              livenessProbe:
+                exec:
+                  command: ["/bin/sh", "-c", "pg_isready -U {{ db_user }}"]
+                initialDelaySeconds: 30
+                periodSeconds: 10
+              readinessProbe:
+                exec:
+                  command: ["/bin/sh", "-c", "pg_isready -U {{ db_user }}"]
+                initialDelaySeconds: 5
+                periodSeconds: 5
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop: [ALL]
+        volumeClaimTemplates:
+        - metadata:
+            name: postgres-storage
+          spec:
+            accessModes: ["ReadWriteOnce"]
+            resources:
+              requests:
+                storage: "{{ db_storage_size }}"
+
+- name: Wait for database to be ready
+  k8s_info:
+    api_version: apps/v1
+    kind: StatefulSet
+    name: taskflow-db
+    namespace: "{{ db_namespace }}"
+  register: statefulset
+  until: >
+    statefulset.resources[0].status.readyReplicas is defined and
+    statefulset.resources[0].status.readyReplicas == 1
+  retries: 30
+  delay: 10
+
+- name: Display deployment method
+  debug:
+    msg: "Database deployed via StatefulSet (predictable pod name: taskflow-db-0)"

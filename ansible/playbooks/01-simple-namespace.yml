@@ -1,0 +1,23 @@
+---
+- name: Simple namespace verification example
+  hosts: localhost
+  gather_facts: no
+  collections:
+    - kubernetes.core
+  
+  tasks:
+    - name: Verify OpenShift connection
+      command: oc whoami
+      register: oc_user
+      changed_when: false
+      failed_when: oc_user.rc != 0
+    
+    - name: Verify namespace exists
+      command: oc get namespace "{{ namespace_dev }}"
+      register: namespace_check
+      changed_when: false
+      failed_when: namespace_check.rc != 0
+
+    - name: Display result
+      debug:
+        msg: "Namespace {{ namespace_dev }} exists and is accessible (user: {{ oc_user.stdout }})"

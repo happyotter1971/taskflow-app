@@ -1,0 +1,10 @@
+#SPDX-License-Identifier: MIT-0
+---
+# defaults file for roles/taskflow-database
+db_name: taskflowdb
+db_user: taskflowuser
+db_password: "{{ lookup('env', 'DB_PASSWORD') | default('taskflow123', true) }}"
+db_namespace: happyotter-dev  # CORRECTED
+db_storage_size: 1Gi
+db_postgres_image: postgres:15-alpine
+db_secret_name: taskflow-db-secret

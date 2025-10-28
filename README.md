@@ -33,9 +33,22 @@ taskflow-app/
 │       ├── database-secret.yaml
 │       ├── configmap-with-db.yaml
 │       └── deployment-with-db.yaml
+├── ansible/                    # Week 4: Ansible automation
+│   ├── ansible.cfg
+│   ├── env.sh                  # Environment configuration
+│   ├── inventory/
+│   │   └── openshift.yml
+│   ├── roles/
+│   │   ├── taskflow-backend/
+│   │   └── taskflow-database/
+│   └── playbooks/
+│       ├── 01-simple-namespace.yml
+│       ├── deploy-full-stack.yml
+│       └── day2-operations.yml
 ├── docs/
 │   ├── week3-precheck.sh       # Week 3 prerequisites check
-│   └── verify-week3.sh         # Week 3 verification script
+│   ├── verify-week3.sh         # Week 3 verification script
+│   └── week4-precheck.sh       # Week 4 prerequisites check
 ├── get-db-pod.sh               # Database pod helper script
 └── README.md
 ```
@@ -100,7 +113,28 @@ docker run -p 8080:8080 taskflow-backend:v1.0
 
 ## Deployment
 
-### OpenShift Deployment (Current)
+### Ansible Deployment (Current - Week 4)
+
+```bash
+# Prerequisites check
+./docs/week4-precheck.sh
+
+# Setup Ansible environment
+cd ansible
+source env.sh
+
+# Deploy full stack (database + backend)
+ansible-playbook playbooks/deploy-full-stack.yml
+
+# Check health and status
+ansible-playbook playbooks/day2-operations.yml
+
+# Verify deployment
+BACKEND=$(oc get route taskflow-backend -n happyotter-dev -o jsonpath='{.spec.host}')
+curl https://$BACKEND/health
+```
+
+### OpenShift Deployment (Week 3 - Manual)
 
 ```bash
 # Prerequisites check
@@ -193,12 +227,22 @@ The application uses environment variables configured via ConfigMap:
 - [x] Connection pooling
 - [x] Health checks with database status
 
+### Week 4: Ansible Automation ✓
+
+- [x] Ansible environment setup
+- [x] Ansible roles (backend, database)
+- [x] Full stack deployment playbook
+- [x] Day 2 operations (health checks)
+- [x] Idempotent resource management
+- [x] OpenShift security context compliance
+- [x] Automated route creation with TLS
+
 ### Upcoming Features
 
-- Ansible automation
 - Frontend application
 - Monitoring and logging
 - Advanced security features
+- GitOps with ArgoCD
 
 ## Deployment Details
 
