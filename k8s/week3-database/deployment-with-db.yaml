@@ -1,0 +1,55 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: taskflow-backend
+  namespace: happyotter-dev
+  labels:
+    app: taskflow
+    component: backend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: taskflow
+      component: backend
+  template:
+    metadata:
+      labels:
+        app: taskflow
+        component: backend
+    spec:
+      containers:
+      - name: backend
+        image: quay.io/happyotter/taskflow-backend:v1.0
+        ports:
+        - containerPort: 8080
+          name: http
+        envFrom:
+        - configMapRef:
+            name: taskflow-config
+        - secretRef:
+            name: taskflow-db-secret  # Database credentials
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 15
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 5
+        securityContext:
+          allowPrivilegeEscalation: false
+          runAsNonRoot: true
+          capabilities:
+            drop: [ALL]

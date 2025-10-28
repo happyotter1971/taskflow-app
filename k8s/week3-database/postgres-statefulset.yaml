@@ -1,0 +1,86 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: taskflow-db
+  namespace: happyotter-dev
+  labels:
+    app: taskflow
+    component: database
+spec:
+  ports:
+  - port: 5432
+    name: postgres
+  clusterIP: None  # Headless service for StatefulSet
+  selector:
+    app: taskflow
+    component: database
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: taskflow-db
+  namespace: happyotter-dev
+  labels:
+    app: taskflow
+    component: database
+spec:
+  serviceName: taskflow-db
+  replicas: 1
+  selector:
+    matchLabels:
+      app: taskflow
+      component: database
+  template:
+    metadata:
+      labels:
+        app: taskflow
+        component: database
+    spec:
+      containers:
+      - name: postgres
+        image: postgres:15-alpine
+        ports:
+        - containerPort: 5432
+          name: postgres
+        env:
+        - name: POSTGRES_DB
+          value: "taskflowdb"
+        - name: POSTGRES_USER
+          value: "taskflowuser"
+        - name: POSTGRES_PASSWORD
+          value: "taskflow123"
+        - name: PGDATA
+          value: /var/lib/postgresql/data/pgdata
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+        volumeMounts:
+        - name: postgres-storage
+          mountPath: /var/lib/postgresql/data
+        livenessProbe:
+          exec:
+            command: ["/bin/sh", "-c", "pg_isready -U taskflowuser"]
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          exec:
+            command: ["/bin/sh", "-c", "pg_isready -U taskflowuser"]
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        securityContext:
+          runAsNonRoot: true
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop: [ALL]
+  volumeClaimTemplates:
+  - metadata:
+      name: postgres-storage
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      resources:
+        requests:
+          storage: 1Gi
