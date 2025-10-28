@@ -23,12 +23,20 @@ taskflow-app/
 │   │   ├── app.py              # Flask application
 │   │   ├── Dockerfile          # Container image definition
 │   │   └── requirements.txt    # Python dependencies
-│   └── k8s/
-│       └── week1-kubernetes/
-│           ├── namespace.yaml   # Kubernetes namespace
-│           ├── configmap.yaml   # Application configuration
-│           ├── deployment.yaml  # Application deployment
-│           └── service.yaml     # Service exposure
+│   └── database/
+│       └── init.sql            # Database schema initialization
+├── k8s/
+│   ├── week1-kubernetes/       # Basic Kubernetes deployment
+│   ├── week2-s2i/              # Source-to-Image build configs
+│   └── week3-database/         # PostgreSQL StatefulSet & integration
+│       ├── postgres-statefulset.yaml
+│       ├── database-secret.yaml
+│       ├── configmap-with-db.yaml
+│       └── deployment-with-db.yaml
+├── docs/
+│   ├── week3-precheck.sh       # Week 3 prerequisites check
+│   └── verify-week3.sh         # Week 3 verification script
+├── get-db-pod.sh               # Database pod helper script
 └── README.md
 ```
 
@@ -90,13 +98,38 @@ docker build -t taskflow-backend:v1.0 .
 docker run -p 8080:8080 taskflow-backend:v1.0
 ```
 
-## Kubernetes Deployment
+## Deployment
 
-### Deploy to Cluster
+### OpenShift Deployment (Current)
+
+```bash
+# Prerequisites check
+./docs/week3-precheck.sh
+
+# Deploy PostgreSQL StatefulSet
+oc apply -f k8s/week3-database/postgres-statefulset.yaml
+
+# Create database secret
+oc apply -f k8s/week3-database/database-secret.yaml
+
+# Update ConfigMap and Deployment with database integration
+oc apply -f k8s/week3-database/configmap-with-db.yaml
+oc apply -f k8s/week3-database/deployment-with-db.yaml
+
+# Initialize database
+DB_POD=$(./get-db-pod.sh happyotter-dev)
+oc cp app/database/init.sql $DB_POD:/tmp/init.sql -n happyotter-dev
+oc exec -it $DB_POD -n happyotter-dev -- psql -U taskflowuser -d taskflowdb -f /tmp/init.sql
+
+# Verify deployment
+./docs/verify-week3.sh
+```
+
+### Kubernetes Deployment (Week 1)
 
 ```bash
 # Apply all manifests
-kubectl apply -f app/k8s/week1-kubernetes/
+kubectl apply -f k8s/week1-kubernetes/
 
 # Check deployment status
 kubectl get all -n happyotter-dev
@@ -105,14 +138,15 @@ kubectl get all -n happyotter-dev
 kubectl logs -n happyotter-dev deployment/taskflow-backend
 ```
 
-### Access the Service
+### Access the Application
 
 ```bash
-# Port forward to local machine
-kubectl port-forward -n happyotter-dev service/taskflow-backend 8080:8080
+# OpenShift Route (automatic)
+ROUTE=$(oc get route taskflow-backend -n happyotter-dev -o jsonpath='{.spec.host}')
+curl https://$ROUTE/health
 
-# Or get the service URL (if using LoadBalancer/NodePort)
-kubectl get service -n happyotter-dev taskflow-backend
+# Kubernetes Port Forward
+kubectl port-forward -n happyotter-dev service/taskflow-backend 8080:8080
 ```
 
 ## Configuration
@@ -130,7 +164,7 @@ The application uses environment variables configured via ConfigMap:
 
 ## Features
 
-### Week 1 Implementation ✓
+### Week 1: Kubernetes Basics ✓
 
 - [x] Containerized Flask application
 - [x] Kubernetes manifests (Namespace, ConfigMap, Deployment, Service)
@@ -140,23 +174,55 @@ The application uses environment variables configured via ConfigMap:
 - [x] Liveness and readiness probes
 - [x] Security context configuration
 
+### Week 2: OpenShift & CI/CD ✓
+
+- [x] OpenShift deployment
+- [x] Source-to-Image (S2I) builds
+- [x] BuildConfig and ImageStream
+- [x] OpenShift Routes for external access
+- [x] GitHub webhook integration
+- [x] Automated CI/CD pipeline
+
+### Week 3: Database Integration ✓
+
+- [x] PostgreSQL StatefulSet deployment
+- [x] Persistent Volume Claims (PVC)
+- [x] Database secrets management
+- [x] Application-database connectivity
+- [x] Database initialization scripts
+- [x] Connection pooling
+- [x] Health checks with database status
+
 ### Upcoming Features
 
-- PostgreSQL database integration
-- Persistent volume claims
-- Secrets management
+- Ansible automation
 - Frontend application
-- CI/CD pipeline
 - Monitoring and logging
+- Advanced security features
 
 ## Deployment Details
 
+### Application
 - **Namespace**: `happyotter-dev`
-- **Replicas**: 2
-- **Image**: `quay.io/happyotter/taskflow-backend:v1.0`
+- **Backend Replicas**: 2
+- **Image**: `quay.io/happyotter/taskflow-backend` (built via S2I)
 - **Port**: 8080
 - **Resource Requests**: 100m CPU, 128Mi memory
 - **Resource Limits**: 500m CPU, 512Mi memory
+
+### Database
+- **Type**: PostgreSQL 15 (Alpine)
+- **Deployment**: StatefulSet (1 replica)
+- **Storage**: 1Gi Persistent Volume (gp3 storage class)
+- **Service**: Headless service (ClusterIP: None)
+- **Port**: 5432
+- **Resource Requests**: 100m CPU, 256Mi memory
+- **Resource Limits**: 500m CPU, 512Mi memory
+
+### URLs
+- **API**: https://taskflow-backend-happyotter-dev.apps.rm3.7wse.p1.openshiftapps.com
+- **Health**: https://taskflow-backend-happyotter-dev.apps.rm3.7wse.p1.openshiftapps.com/health
+- **Tasks API**: https://taskflow-backend-happyotter-dev.apps.rm3.7wse.p1.openshiftapps.com/api/tasks
 
 ## License
 
